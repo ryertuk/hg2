@@ -1,0 +1,15 @@
+sqlalchemy==2.0.23
+alembic==1.13.1
+pyside6==6.6.0
+pydantic==2.5.2
+bcrypt==4.0.1
+jdatetime==4.1.1
+arabic-reshaper==3.0.0
+python-bidi==0.4.2
+reportlab==4.0.7
+loguru==0.7.2
+click==8.1.7
+pytest==7.4.3
+transitions==0.9.0  # برای state machine چک
+dictdiffer==0.9.0  # برای audit diff
+pyinstaller==6.1.0  # برای build
