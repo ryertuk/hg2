@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt
 from app.ui.parties.party_list import PartyListView
 from app.ui.units.unit_list import UnitListView      # ✅ جدید
 from app.ui.items.item_list import ItemListView      # ✅ جدید
+from app.ui.stock.stock_view import StockView
 
 class DashboardWindow(QMainWindow):
     def __init__(self):
@@ -34,6 +35,9 @@ class DashboardWindow(QMainWindow):
         # Tab 4: Items ✅
         self.item_view = ItemListView()
         self.tabs.addTab(self.item_view, "کالاها")
+        
+        self.stock_view = StockView()
+        self.tabs.addTab(self.stock_view, "📦 انبار")
 
         self.setCentralWidget(self.tabs)
 
