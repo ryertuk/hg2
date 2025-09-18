@@ -1,6 +1,7 @@
 # app/models/stock_movement.py
 from sqlalchemy import Column, Integer, Numeric, String, DateTime, ForeignKey, CheckConstraint
 from app.models.base import BaseModel
+from sqlalchemy.sql import func  # ✅ این خط اضافه شود
 
 class StockMovement(BaseModel):
     __tablename__ = 'stock_movements'

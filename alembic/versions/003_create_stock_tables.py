@@ -27,6 +27,7 @@ def upgrade():
         sa.Column('cost_per_unit', sa.Numeric(precision=18, scale=0), nullable=False),
         sa.Column('total_cost', sa.Numeric(precision=18, scale=0), nullable=False),
         sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(['item_id'], ['items.id'], ),
         sa.ForeignKeyConstraint(['unit_id'], ['units.id'], ),
         sa.PrimaryKeyConstraint('id'),

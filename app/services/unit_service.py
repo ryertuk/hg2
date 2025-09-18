@@ -32,3 +32,7 @@ class UnitService:
             raise Exception("واحد یافت نشد.")
         self.db.delete(unit)
         self.db.commit()
+
+    # ✅ متد جدید — افزوده شد
+    def get_unit_by_id(self, unit_id: int):
+        return self.db.query(Unit).filter(Unit.id == unit_id).first()

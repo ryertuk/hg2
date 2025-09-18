@@ -11,18 +11,6 @@ from app.models.unit import Unit
 from app.models.item import Item
 from app.utils.code_generator import generate_sku
 
-def seed_stock_movements():
-    from app.models.stock_movement import StockMovement
-    # فرض: 3 کالا وجود دارد — با IDهای 1,2,3
-    movements = [
-        StockMovement(item_id=1, qty=100.0, unit_id=1, movement_type="purchase_in", cost_per_unit=10000, reference_type="seed", reference_id=None),
-        StockMovement(item_id=1, qty=-20.0, unit_id=1, movement_type="sale_out", cost_per_unit=15000, reference_type="seed", reference_id=None),
-        StockMovement(item_id=2, qty=50.0, unit_id=2, movement_type="purchase_in", cost_per_unit=50000, reference_type="seed", reference_id=None),
-        StockMovement(item_id=3, qty=200.0, unit_id=3, movement_type="purchase_in", cost_per_unit=20000, reference_type="seed", reference_id=None),
-    ]
-    db.add_all(movements)
-    db.commit()
-    print("✅ تحرکات انبار نمونه افزوده شدند.")
 
 
 def seed_data():
@@ -115,7 +103,18 @@ def seed_data():
     db.commit()
     print("✅ داده‌های نمونه با موفقیت افزوده یا به‌روزرسانی شدند.")
 
+    from app.models.stock_movement import StockMovement
+    # فرض: 3 کالا وجود دارد — با IDهای 1,2,3
+    movements = [
+        StockMovement(item_id=1, qty=100.0, unit_id=1, movement_type="purchase_in", cost_per_unit=10000, reference_type="seed", reference_id=None),
+        StockMovement(item_id=1, qty=-20.0, unit_id=1, movement_type="sale_out", cost_per_unit=15000, reference_type="seed", reference_id=None),
+        StockMovement(item_id=2, qty=50.0, unit_id=2, movement_type="purchase_in", cost_per_unit=50000, reference_type="seed", reference_id=None),
+        StockMovement(item_id=3, qty=200.0, unit_id=3, movement_type="purchase_in", cost_per_unit=20000, reference_type="seed", reference_id=None),
+    ]
+
+    db.commit()
+    print("✅ تحرکات انبار نمونه افزوده شدند.")
+
 if __name__ == "__main__":
     init_db()
     seed_data()
-    seed_stock_movements()
