@@ -5,7 +5,9 @@ from app.ui.parties.party_list import PartyListView
 from app.ui.units.unit_list import UnitListView
 from app.ui.items.item_list import ItemListView
 from app.ui.stock.stock_view import StockView
-from app.ui.invoices.invoice_list import InvoiceListView  # ✅ اضافه شد
+from app.ui.invoices.invoice_list import InvoiceListView
+from app.ui.checks.check_list import CheckListView
+from app.ui.accounting.journal_view import JournalView 
 
 class DashboardWindow(QMainWindow):
     def __init__(self):
@@ -44,6 +46,14 @@ class DashboardWindow(QMainWindow):
         # Tab 6: Invoices ✅ اضافه شد
         self.invoice_view = InvoiceListView()
         self.tabs.addTab(self.invoice_view, "📄 فاکتورها")
+        
+        # Tab 7: checks
+        self.check_view = CheckListView()
+        self.tabs.addTab(self.check_view, "💳 چک‌ها")
+        
+        # Tab 8: Journal ✅ اضافه شد
+        self.journal_view = JournalView()
+        self.tabs.addTab(self.journal_view, "📚 دفتر روزنامه")
 
         self.setCentralWidget(self.tabs)
 
