@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineE
 from PySide6.QtCore import Qt, QStringListModel
 from app.services.date_service import gregorian_to_jalali, jalali_to_gregorian
 from app.services.party_service import PartyService
+from .invoice_line_delegate import InvoiceLineDelegate
 
 class InvoiceDialog(QDialog):
     def __init__(self, parent=None, invoice=None):
@@ -65,6 +66,9 @@ class InvoiceDialog(QDialog):
 
         # خطوط فاکتور — جدول
         self.table = QTableView()
+        self.table.setItemDelegate(InvoiceLineDelegate(self))
+        self.table_model = InvoiceLineTableModel([])  # مدل جدید — باید تعریف شود
+        self.table.setModel(self.table_model)
         layout.addWidget(self.table)
 
         # دکمه‌ها
@@ -75,6 +79,13 @@ class InvoiceDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(save_btn)
+        
+        
+        # دکمه افزودن خط فاکتور
+        add_line_btn = QPushButton("➕ افزودن خط فاکتور")
+        add_line_btn.clicked.connect(self.add_invoice_line)
+        btn_layout.insertWidget(0, add_line_btn)
+        
         layout.addLayout(btn_layout)
 
         self.setLayout(layout)
