@@ -115,6 +115,19 @@ def seed_data():
     db.commit()
     print("✅ تحرکات انبار نمونه افزوده شدند.")
 
+
+    from app.models.print_template import PrintTemplate
+    with open("templates/invoice_template.html", "r", encoding="utf-8") as f:
+        template_body = f.read()
+    template = PrintTemplate(
+        name="قالب پیش‌فرض فاکتور A4",
+        template_type="invoice_A4",
+        template_body=template_body
+    )
+    db.add(template)
+    db.commit()
+    print("✅ قالب چاپ پیش‌فرض افزوده شد.")
+    
 if __name__ == "__main__":
     init_db()
     seed_data()

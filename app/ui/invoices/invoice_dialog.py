@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, QStringListModel
 from app.services.date_service import gregorian_to_jalali, jalali_to_gregorian
 from app.services.party_service import PartyService
 from .invoice_line_delegate import InvoiceLineDelegate
+from .invoice_line_model import InvoiceLineTableModel
 
 class InvoiceDialog(QDialog):
     def __init__(self, parent=None, invoice=None):
@@ -67,7 +68,7 @@ class InvoiceDialog(QDialog):
         # خطوط فاکتور — جدول
         self.table = QTableView()
         self.table.setItemDelegate(InvoiceLineDelegate(self))
-        self.table_model = InvoiceLineTableModel([])  # مدل جدید — باید تعریف شود
+        self.table_model = InvoiceLineTableModel([])
         self.table.setModel(self.table_model)
         layout.addWidget(self.table)
 
@@ -85,6 +86,11 @@ class InvoiceDialog(QDialog):
         add_line_btn = QPushButton("➕ افزودن خط فاکتور")
         add_line_btn.clicked.connect(self.add_invoice_line)
         btn_layout.insertWidget(0, add_line_btn)
+        
+        
+        remove_line_btn = QPushButton("🗑️ حذف خط انتخاب‌شده")
+        remove_line_btn.clicked.connect(self.remove_invoice_line)
+        btn_layout.insertWidget(1, remove_line_btn)
         
         layout.addLayout(btn_layout)
 
@@ -155,6 +161,22 @@ class InvoiceDialog(QDialog):
             return False
         return True
 
+
+    def add_invoice_line(self):
+        """افزودن خط جدید به فاکتور"""
+        self.table_model.add_line()
+        self.table.scrollToBottom()
+
+    def remove_invoice_line(self):
+        """حذف خط انتخاب‌شده"""
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "هشدار", "لطفاً یک خط را انتخاب کنید.")
+            return
+        row = selected[0].row()
+        self.table_model.remove_line(row)
+    
+    
     def accept(self):
         if self.validate():
             super().accept()
