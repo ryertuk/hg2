@@ -1,12 +1,13 @@
 # app/ui/invoices/invoice_line_model.py
-from PySide6.QtCore import QAbstractTableModel, Qt
+from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex
 from app.services.item_service import ItemService
 from app.services.unit_service import UnitService
+from app.utils.price_calculator import calculate_line_total
 
 class InvoiceLineTableModel(QAbstractTableModel):
     def __init__(self, lines_data):
         super().__init__()
-        self.lines_data = lines_data  # لیست دیکشنری‌ها — داده‌های خطوط فاکتور
+        self.lines_data = lines_data
         self.item_service = ItemService()
         self.unit_service = UnitService()
         self.items = self.item_service.get_all_items()
@@ -65,21 +66,61 @@ class InvoiceLineTableModel(QAbstractTableModel):
         if role == Qt.EditRole:
             row = index.row()
             col = index.column()
-            if col == 0:  # item_id — از ایندکس ComboBox
-                self.lines_data[row]['item_id'] = self.items[value].id
-                # بروزرسانی واحد پایه کالا
-                item = self.items[value]
-                base_unit = next((u for u in self.units if u.id == item.base_unit_id), None)
-                if base_unit:
-                    self.lines_data[row]['unit_id'] = base_unit.id
-            elif col == 1:
-                self.lines_data[row]['qty'] = float(value)
-            elif col == 2:
-                self.lines_data[row]['unit_id'] = self.units[value].id
-            elif col == 3:
-                self.lines_data[row]['unit_price'] = int(value.replace(',', ''))
-            # محاسبه مجدد line_total
-            self.recalculate_line_total(row)
+            if col == 0:  # item_id
+                if isinstance(value, int) and 0 <= value < len(self.items):
+                    item = self.items[value]
+                    self.lines_data[row]['item_id'] = item.id
+                    # ✅ واحد پایه کالا به صورت خودکار تنظیم می‌شود
+                    unit = next((u for u in self.units if u.id == item.base_unit_id), None)
+                    if unit:
+                        self.lines_data[row]['unit_id'] = unit.id
+                    self.recalculate_line_total(row)
+                elif isinstance(value, str):  # از طریق جستجو
+                    selected_item = None
+                    for item in self.items:
+                        if f"{item.name} ({item.sku})" == value:
+                            selected_item = item
+                            break
+                    if selected_item:
+                        self.lines_data[row]['item_id'] = selected_item.id
+                        unit = next((u for u in self.units if u.id == selected_item.base_unit_id), None)
+                        if unit:
+                            self.lines_data[row]['unit_id'] = unit.id
+                        self.recalculate_line_total(row)
+                    else:
+                        self.lines_data[row]['item_id'] = None
+                        self.lines_data[row]['unit_id'] = None
+            elif col == 1:  # qty
+                try:
+                    self.lines_data[row]['qty'] = float(value)
+                    self.recalculate_line_total(row)
+                except ValueError:
+                    return False
+            elif col == 2:  # unit_id
+                if isinstance(value, int) and 0 <= value < len(self.units):
+                    self.lines_data[row]['unit_id'] = self.units[value].id
+            elif col == 3:  # unit_price
+                try:
+                    clean_value = str(value).replace(',', '')
+                    self.lines_data[row]['unit_price'] = int(float(clean_value))
+                    self.recalculate_line_total(row)
+                except ValueError:
+                    return False
+            elif col == 5:  # discount
+                try:
+                    clean_value = str(value).replace(',', '')
+                    self.lines_data[row]['discount'] = int(float(clean_value))
+                except ValueError:
+                    return False
+            elif col == 6:  # tax
+                try:
+                    clean_value = str(value).replace(',', '')
+                    self.lines_data[row]['tax'] = int(float(clean_value))
+                except ValueError:
+                    return False
+            elif col == 7:  # notes
+                self.lines_data[row]['notes'] = str(value)
+
             self.dataChanged.emit(index, index)
             return True
         return False
@@ -89,21 +130,29 @@ class InvoiceLineTableModel(QAbstractTableModel):
         line = self.lines_data[row]
         item_id = line.get('item_id')
         if not item_id:
+            line['line_total'] = 0
             return
+
         item = next((i for i in self.items if i.id == item_id), None)
         if not item:
+            line['line_total'] = 0
             return
 
         qty = line.get('qty', 0)
         unit_price = line.get('unit_price', 0)
 
-        if item.unit_type == "measure" and item.length and item.width:
-            area = item.length * item.width
-            line_total = int(unit_price * area * qty)
-        else:
-            line_total = int(unit_price * qty)
-
-        line['line_total'] = line_total
+        try:
+            line_total = calculate_line_total(
+                item=item,
+                qty=qty,
+                unit_price=unit_price,
+                length=item.length if item.unit_type == "measure" else None,
+                width=item.width if item.unit_type == "measure" else None
+            )
+            line['line_total'] = line_total
+        except Exception as e:
+            print(f"خطا در محاسبه line_total: {e}")
+            line['line_total'] = 0
 
     def add_line(self):
         """افزودن یک خط خالی جدید"""
@@ -117,12 +166,13 @@ class InvoiceLineTableModel(QAbstractTableModel):
             'line_total': 0,
             'notes': ''
         }
-        self.beginInsertRows(Qt.QModelIndex(), len(self.lines_data), len(self.lines_data))
+        self.beginInsertRows(QModelIndex(), len(self.lines_data), len(self.lines_data))
         self.lines_data.append(new_line)
         self.endInsertRows()
 
     def remove_line(self, row):
         """حذف یک خط"""
-        self.beginRemoveRows(Qt.QModelIndex(), row, row)
-        self.lines_data.pop(row)
-        self.endRemoveRows()
+        if 0 <= row < len(self.lines_data):
+            self.beginRemoveRows(QModelIndex(), row, row)
+            self.lines_data.pop(row)
+            self.endRemoveRows()

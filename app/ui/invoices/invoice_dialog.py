@@ -2,18 +2,18 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                                QComboBox, QPushButton, QMessageBox, QTableView, QCompleter)
 from PySide6.QtCore import Qt, QStringListModel
+from .invoice_line_model import InvoiceLineTableModel
+from .invoice_line_delegate import InvoiceLineDelegate
 from app.services.date_service import gregorian_to_jalali, jalali_to_gregorian
 from app.services.party_service import PartyService
-from .invoice_line_delegate import InvoiceLineDelegate
-from .invoice_line_model import InvoiceLineTableModel
 
 class InvoiceDialog(QDialog):
     def __init__(self, parent=None, invoice=None):
         super().__init__(parent)
         self.invoice = invoice
         self.party_service = PartyService()
-        self.parties = []  # لیست کامل طرف‌حساب‌ها
-        self.selected_party_id = None  # ID طرف‌حساب انتخاب‌شده
+        self.parties = []
+        self.selected_party_id = None  # ✅ این متغیر کلیدی است
 
         self.setWindowTitle("فاکتور جدید" if not invoice else "ویرایش فاکتور")
         self.setLayoutDirection(Qt.RightToLeft)
@@ -49,7 +49,7 @@ class InvoiceDialog(QDialog):
         self.completer.setFilterMode(Qt.MatchContains)
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
         self.completer.setCompletionMode(QCompleter.PopupCompletion)
-        self.completer.activated.connect(self.on_party_selected)
+        self.completer.activated.connect(self.on_party_selected)  # ✅ اتصال سیگنال
         self.party_input.setCompleter(self.completer)
 
         # تاریخ — شمسی
@@ -74,71 +74,71 @@ class InvoiceDialog(QDialog):
 
         # دکمه‌ها
         btn_layout = QHBoxLayout()
+        add_line_btn = QPushButton("➕ افزودن خط فاکتور")
+        add_line_btn.clicked.connect(self.add_invoice_line)
+        btn_layout.addWidget(add_line_btn)
+
+        remove_line_btn = QPushButton("🗑️ حذف خط انتخاب‌شده")
+        remove_line_btn.clicked.connect(self.remove_invoice_line)  # ✅ اتصال سیگنال
+        btn_layout.addWidget(remove_line_btn)
+
         save_btn = QPushButton("ذخیره")
         save_btn.clicked.connect(self.accept)
         cancel_btn = QPushButton("انصراف")
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(save_btn)
-        
-        
-        # دکمه افزودن خط فاکتور
-        add_line_btn = QPushButton("➕ افزودن خط فاکتور")
-        add_line_btn.clicked.connect(self.add_invoice_line)
-        btn_layout.insertWidget(0, add_line_btn)
-        
-        
-        remove_line_btn = QPushButton("🗑️ حذف خط انتخاب‌شده")
-        remove_line_btn.clicked.connect(self.remove_invoice_line)
-        btn_layout.insertWidget(1, remove_line_btn)
-        
         layout.addLayout(btn_layout)
 
         self.setLayout(layout)
-
-        # اتصال سیگنال تغییر متن برای فیلتر
         self.party_input.textChanged.connect(self.filter_parties)
 
     def load_parties(self):
-        """بارگذاری لیست کامل طرف‌حساب‌ها"""
         self.parties = self.party_service.get_all_parties()
-        # ایجاد لیست نمایشی
         display_list = [f"{p.name} ({p.code})" for p in self.parties]
         self.completer_model.setStringList(display_list)
 
-        # اگر فاکتور ویرایشی است — مقدار قبلی را تنظیم کن
         if self.invoice:
             for i, party in enumerate(self.parties):
                 if party.id == self.invoice.party_id:
                     self.party_input.setText(f"{party.name} ({party.code})")
-                    self.selected_party_id = party.id
+                    self.selected_party_id = party.id  # ✅ تنظیم اولیه
                     break
 
     def filter_parties(self, text):
-        """فیلتر کردن لیست بر اساس متن وارد شده"""
         if not text:
             display_list = [f"{p.name} ({p.code})" for p in self.parties]
             self.completer_model.setStringList(display_list)
             return
-
-        filtered = [
-            p for p in self.parties
-            if text.lower() in p.name.lower() or text in p.code
-        ]
+        filtered = [p for p in self.parties if text.lower() in p.name.lower() or text in p.code]
         display_list = [f"{p.name} ({p.code})" for p in filtered]
         self.completer_model.setStringList(display_list)
 
     def on_party_selected(self, selected_text):
-        """هنگام انتخاب یک مورد از completer"""
-        # استخراج ID از متن انتخاب‌شده
+        """✅ این متد کلیدی است — selected_party_id را تنظیم می‌کند"""
         for party in self.parties:
             if f"{party.name} ({party.code})" == selected_text:
                 self.selected_party_id = party.id
+                print(f"طرف‌حساب انتخاب شد: {party.name} (ID: {party.id})")  # برای دیباگ
                 break
+
+    def add_invoice_line(self):
+        self.table_model.add_line()
+        self.table.scrollToBottom()
+
+    def remove_invoice_line(self):
+        """✅ حذف خط انتخاب‌شده — اصلاح شده"""
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "هشدار", "لطفاً یک خط را انتخاب کنید.")
+            return
+        row = selected[0].row()
+        self.table_model.remove_line(row)  # ✅ فراخوانی صحیح
 
     def get_data(self):
         type_reverse = {0: "purchase", 1: "sale", 2: "purchase_return", 3: "sale_return"}
 
+        # ✅ اعتبارسنجی انتخاب طرف‌حساب
         if self.selected_party_id is None:
             raise ValueError("لطفاً یک طرف‌حساب انتخاب کنید.")
 
@@ -147,7 +147,7 @@ class InvoiceDialog(QDialog):
             "serial": "INV",
             "number": 1,
             "serial_full": "INV-1404-0001",
-            "party_id": self.selected_party_id,
+            "party_id": self.selected_party_id,  # ✅ از selected_party_id استفاده می‌شود
             "date_jalali": self.date_input.text().strip(),
             "created_by": 1,
         }
@@ -161,22 +161,6 @@ class InvoiceDialog(QDialog):
             return False
         return True
 
-
-    def add_invoice_line(self):
-        """افزودن خط جدید به فاکتور"""
-        self.table_model.add_line()
-        self.table.scrollToBottom()
-
-    def remove_invoice_line(self):
-        """حذف خط انتخاب‌شده"""
-        selected = self.table.selectionModel().selectedRows()
-        if not selected:
-            QMessageBox.warning(self, "هشدار", "لطفاً یک خط را انتخاب کنید.")
-            return
-        row = selected[0].row()
-        self.table_model.remove_line(row)
-    
-    
     def accept(self):
         if self.validate():
             super().accept()
