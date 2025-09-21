@@ -2,6 +2,7 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                                QComboBox, QPushButton, QMessageBox, QTableView, QCompleter)
 from PySide6.QtCore import Qt, QStringListModel
+from PySide6.QtGui import QKeyEvent
 from .invoice_line_model import InvoiceLineTableModel
 from .invoice_line_delegate import InvoiceLineDelegate
 from app.services.date_service import gregorian_to_jalali, jalali_to_gregorian
@@ -17,6 +18,7 @@ class InvoiceDialog(QDialog):
 
         self.setWindowTitle("فاکتور جدید" if not invoice else "ویرایش فاکتور")
         self.setLayoutDirection(Qt.RightToLeft)
+        self.resize(900, 600)  # ✅ اندازه صفحه بزرگتر
         self.setup_ui()
         self.load_parties()
 
@@ -67,9 +69,13 @@ class InvoiceDialog(QDialog):
 
         # خطوط فاکتور — جدول
         self.table = QTableView()
+        self.table.setSelectionBehavior(QTableView.SelectRows)  # ✅ تغییر مهم: انتخاب کل سطر
+        self.table.setSelectionMode(QTableView.SingleSelection)  # ✅ فقط یک سطر قابل انتخاب
         self.table.setItemDelegate(InvoiceLineDelegate(self))
         self.table_model = InvoiceLineTableModel([])
         self.table.setModel(self.table_model)
+        
+        
         layout.addWidget(self.table)
 
         # دکمه‌ها
@@ -82,6 +88,7 @@ class InvoiceDialog(QDialog):
         remove_line_btn.clicked.connect(self.remove_invoice_line)  # ✅ اتصال سیگنال
         btn_layout.addWidget(remove_line_btn)
 
+
         save_btn = QPushButton("ذخیره")
         save_btn.clicked.connect(self.accept)
         cancel_btn = QPushButton("انصراف")
@@ -92,6 +99,14 @@ class InvoiceDialog(QDialog):
 
         self.setLayout(layout)
         self.party_input.textChanged.connect(self.filter_parties)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        """✅ اضافه کردن خط فاکتور با زدن دکمه *"""
+        if event.text() == '*':
+            self.add_invoice_line()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def load_parties(self):
         self.parties = self.party_service.get_all_parties()
@@ -132,15 +147,62 @@ class InvoiceDialog(QDialog):
         if not selected:
             QMessageBox.warning(self, "هشدار", "لطفاً یک خط را انتخاب کنید.")
             return
-        row = selected[0].row()
-        self.table_model.remove_line(row)  # ✅ فراخوانی صحیح
+        
+        # ✅ حذف سطر انتخاب شده
+        for index in selected:
+            row = index.row()
+            self.table_model.remove_line(row)
+
+    def cleanup_empty_rows(self):
+        """✅ حذف سطرهای خالی قبل از ذخیره"""
+        rows_to_remove = []
+        for row in range(self.table_model.rowCount()):
+            # استفاده از متد data برای دسترسی به مقادیر
+            item_code = self.table_model.data(self.table_model.index(row, 0), Qt.DisplayRole)  # ستون کد کالا
+            item_name = self.table_model.data(self.table_model.index(row, 1), Qt.DisplayRole)  # ستون نام کالا
+            quantity = self.table_model.data(self.table_model.index(row, 4), Qt.DisplayRole)   # ستون تعداد
+        
+            if not item_code and not item_name and not quantity:
+                rows_to_remove.append(row)
+    
+        # حذف سطرهای خالی از انتها به ابتدا
+        for row in sorted(rows_to_remove, reverse=True):
+            self.table_model.remove_line(row)
+    
+        return len(rows_to_remove) > 0
+
+
+ 
+    def has_valid_data(self):
+        """✅ بررسی وجود داده معتبر در جدول"""
+        for row in range(self.table_model.rowCount()):
+            item_code = self.table_model.data(self.table_model.index(row, 0), Qt.DisplayRole)  # ستون کد کالا
+            item_name = self.table_model.data(self.table_model.index(row, 1), Qt.DisplayRole)  # ستون نام کالا
+            quantity = self.table_model.data(self.table_model.index(row, 4), Qt.DisplayRole)   # ستون تعداد
+            unit_price = self.table_model.data(self.table_model.index(row, 3), Qt.DisplayRole) # ستون قیمت واحد
+        
+            # اگر حداقل یکی از فیلدهای ضروری پر شده باشد
+            if item_code or item_name or (quantity and float(quantity) > 0) or (unit_price and float(unit_price) > 0):
+                return True
+        return False
+
 
     def get_data(self):
         type_reverse = {0: "purchase", 1: "sale", 2: "purchase_return", 3: "sale_return"}
 
-        # ✅ اعتبارسنجی انتخاب طرف‌حساب
+        # ✅ اعتبارسنجی انتخاب طرف‌حساب - اصلاح شده
         if self.selected_party_id is None:
-            raise ValueError("لطفاً یک طرف‌حساب انتخاب کنید.")
+            # بررسی مجدد در صورتی که طرف حساب از قبل انتخاب شده اما selected_party_id تنظیم نشده
+            party_text = self.party_input.text().strip()
+            if party_text:
+                for party in self.parties:
+                    if f"{party.name} ({party.code})" == party_text:
+                        self.selected_party_id = party.id
+                        break
+            
+            # اگر هنوز انتخاب نشده، خطا بده
+            if self.selected_party_id is None:
+                raise ValueError("لطفاً یک طرف‌حساب انتخاب کنید.")
 
         return {
             "invoice_type": type_reverse[self.type_combo.currentIndex()],
@@ -156,9 +218,34 @@ class InvoiceDialog(QDialog):
         if not self.date_input.text().strip():
             QMessageBox.warning(self, "خطا", "تاریخ الزامی است.")
             return False
+        
+        # ✅ اعتبارسنجی بهبود یافته برای طرف حساب
         if self.selected_party_id is None:
-            QMessageBox.warning(self, "خطا", "لطفاً یک طرف‌حساب انتخاب کنید.")
+            party_text = self.party_input.text().strip()
+            if not party_text:
+                QMessageBox.warning(self, "خطا", "لطفاً یک طرف‌حساب انتخاب کنید.")
+                return False
+            
+            # بررسی مجدد برای پیدا کردن طرف حساب بر اساس متن وارد شده
+            found = False
+            for party in self.parties:
+                if f"{party.name} ({party.code})" == party_text:
+                    self.selected_party_id = party.id
+                    found = True
+                    break
+            
+            if not found:
+                QMessageBox.warning(self, "خطا", "طرف‌حساب انتخاب شده معتبر نیست.")
+                return False
+        
+        # ✅ حذف سطرهای خالی قبل از بررسی
+        self.cleanup_empty_rows()
+        
+        # ✅ بررسی وجود داده در جدول
+        if not self.has_valid_data():
+            QMessageBox.warning(self, "خطا", "جدول فاکتور نمی‌تواند خالی باشد. لطفاً حداقل یک آیتم اضافه کنید.")
             return False
+        
         return True
 
     def accept(self):

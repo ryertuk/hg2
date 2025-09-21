@@ -8,6 +8,7 @@ from app.ui.stock.stock_view import StockView
 from app.ui.invoices.invoice_list import InvoiceListView
 from app.ui.checks.check_list import CheckListView
 from app.ui.accounting.journal_view import JournalView 
+from app.ui.backup.backup_view import BackupView
 
 class DashboardWindow(QMainWindow):
     def __init__(self):
@@ -54,6 +55,9 @@ class DashboardWindow(QMainWindow):
         # Tab 8: Journal ✅ اضافه شد
         self.journal_view = JournalView()
         self.tabs.addTab(self.journal_view, "📚 دفتر روزنامه")
+        
+        self.backup_view = BackupView()
+        self.tabs.addTab(self.backup_view, "💾 بک‌آپ و بازیابی")
 
         self.setCentralWidget(self.tabs)
 
