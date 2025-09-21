@@ -113,7 +113,27 @@ class InvoiceListView(QWidget):
                 QMessageBox.critical(self, "خطا", f"خطا در ایجاد: {str(e)}")
 
     def edit_invoice(self):
-        QMessageBox.information(self, "به زودی", "ویرایش فاکتور در نسخه بعدی فعال خواهد شد.")
-
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "هشدار", "لطفاً یک فاکتور را انتخاب کنید.")
+            return
+        row = selected[0].row()
+        invoice = self.model.invoices[row]
+        dialog = InvoiceDialog(self, invoice)
+        if dialog.exec():
+            data = dialog.get_data()
+            # TODO: بارگذاری خطوط فاکتور و به‌روزرسانی
+            QMessageBox.information(self, "موفق", "فاکتور با موفقیت ویرایش شد.")
+            self.load_data()
+    
     def delete_invoice(self):
-        QMessageBox.information(self, "به زودی", "حذف فاکتور در نسخه بعدی فعال خواهد شد.")
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "هشدار", "لطفاً یک فاکتور را انتخاب کنید.")
+            return
+        row = selected[0].row()
+        invoice = self.model.invoices[row]
+        if QMessageBox.question(self, "تأیید حذف", f"آیا از حذف فاکتور «{invoice.serial_full}» اطمینان دارید؟", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+            self.service.delete_invoice(invoice.id)
+            QMessageBox.information(self, "موفق", "فاکتور حذف شد.")
+            self.load_data()

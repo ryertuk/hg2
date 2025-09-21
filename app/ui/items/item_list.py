@@ -26,7 +26,18 @@ class ItemTableModel(QAbstractTableModel):
             if col == 0: return item.sku
             elif col == 1: return item.name
             elif col == 2: return "تعدادی" if item.unit_type == "count" else "اندازه‌ای"
-            elif col == 3: return "?"  # واحد پایه — در مرحله بعد با JOIN نمایش داده می‌شود
+            elif col == 3:
+                if hasattr(item, 'unit') and item.unit:
+                    return item.unit.name
+                else:
+                    # بارگذاری واحد از دیتابیس
+                    from app.services.unit_service import UnitService
+                    unit_service = UnitService()
+                    unit = unit_service.get_unit_by_id(item.base_unit_id)
+                    if unit:
+                        item.unit = unit  # ذخیره برای نمایش بعدی
+                        return unit.name
+                    return "نامشخص"
             elif col == 4: return "✅" if item.active else "❌"
         return None
 

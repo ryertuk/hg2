@@ -9,6 +9,8 @@ from app.ui.invoices.invoice_list import InvoiceListView
 from app.ui.checks.check_list import CheckListView
 from app.ui.accounting.journal_view import JournalView 
 from app.ui.backup.backup_view import BackupView
+from PySide6.QtWidgets import QGridLayout, QFrame
+from app.services.dashboard_service import DashboardService  # جدید — باید ایجاد شود
 
 class DashboardWindow(QMainWindow):
     def __init__(self):
@@ -18,13 +20,50 @@ class DashboardWindow(QMainWindow):
         self.setLayoutDirection(Qt.RightToLeft)
 
         self.tabs = QTabWidget()
-
+        
         # Tab 1: Placeholder
+        # جایگزین کردن تب placeholder
         placeholder_widget = QWidget()
-        layout = QVBoxLayout()
-        label = QLabel("مرحله 4: مدیریت فاکتورها — آماده استفاده")
-        label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(label)
+        layout = QGridLayout()
+        # عنوان
+        title_label = QLabel("📊 خلاصه عملکرد سیستم")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; margin: 20px;")
+        layout.addWidget(title_label, 0, 0, 1, 3)
+
+        # کارت‌های آمار
+        service = DashboardService()
+
+        # کارت ۱: تعداد کالاها
+        card1 = self.create_stat_card("📦 تعداد کالاها", f"{service.get_item_count():,}")
+        layout.addWidget(card1, 1, 0)
+
+        # کارت ۲: تعداد طرف‌حساب‌ها
+        card2 = self.create_stat_card("👥 تعداد طرف‌حساب‌ها", f"{service.get_party_count():,}")
+        layout.addWidget(card2, 1, 1)
+
+        # کارت ۳: موجودی کل انبار (ریال)
+        card3 = self.create_stat_card("💰 ارزش کل انبار", f"{service.get_total_inventory_value():,} ریال")
+        layout.addWidget(card3, 1, 2)
+
+        # کارت ۴: فاکتورهای امروز
+        card4 = self.create_stat_card("📄 فاکتورهای امروز", f"{service.get_today_invoices_count()}")
+        layout.addWidget(card4, 2, 0)
+
+        # کارت ۵: چک‌های در جریان
+        card5 = self.create_stat_card("💳 چک‌های در جریان", f"{service.get_active_checks_count()}")
+        layout.addWidget(card5, 2, 1)
+
+        # کارت ۶: بدهی/طلب کل
+        card6 = self.create_stat_card("📊 بدهی/طلب کل", f"{service.get_total_receivable_payable():,} ریال")
+        layout.addWidget(card6, 2, 2)
+
+        placeholder_widget.setLayout(layout)
+        self.tabs.insertTab(0, placeholder_widget, "📊 داشبورد")
+        #
+
+        
+        
         placeholder_widget.setLayout(layout)
         self.tabs.addTab(placeholder_widget, "داشبورد")
 
@@ -74,3 +113,21 @@ class DashboardWindow(QMainWindow):
                 margin: 5px;
             }
         """)
+        
+    def create_stat_card(self, title, value):
+        """ایجاد یک کارت آماری"""
+        frame = QFrame()
+        frame.setFrameShape(QFrame.Box)
+        frame.setStyleSheet("border: 2px solid #ccc; border-radius: 10px; padding: 15px;")
+    
+        layout = QVBoxLayout()
+        title_label = QLabel(title)
+        title_label.setStyleSheet("font-size: 14px; color: #666; font-weight: bold;")
+        value_label = QLabel(value)
+        value_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #2c3e50; margin-top: 10px;")
+        value_label.setAlignment(Qt.AlignCenter)
+    
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        frame.setLayout(layout)
+        return frame        

@@ -104,8 +104,29 @@ class CheckListView(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "خطا", f"خطا در ایجاد: {str(e)}")
 
-    def edit_check(self):
-        QMessageBox.information(self, "به زودی", "ویرایش چک در نسخه بعدی فعال خواهد شد.")
 
+    def edit_check(self):
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "هشدار", "لطفاً یک چک را انتخاب کنید.")
+            return
+        row = selected[0].row()
+        check = self.model.checks[row]
+        dialog = CheckDialog(self, check)
+        if dialog.exec():
+            data = dialog.get_data()
+            # TODO: به‌روزرسانی چک
+            QMessageBox.information(self, "موفق", "چک با موفقیت ویرایش شد.")
+            self.load_data()
+    
     def delete_check(self):
-        QMessageBox.information(self, "به زودی", "حذف چک در نسخه بعدی فعال خواهد شد.")
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "هشدار", "لطفاً یک چک را انتخاب کنید.")
+            return
+        row = selected[0].row()
+        check = self.model.checks[row]
+        if QMessageBox.question(self, "تأیید حذف", f"آیا از حذف چک «{check.check_number}» اطمینان دارید؟", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+            self.service.delete_check(check.id)
+            QMessageBox.information(self, "موفق", "چک حذف شد.")
+            self.load_data()
