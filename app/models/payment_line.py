@@ -1,5 +1,5 @@
 # app/models/payment_line.py
-from sqlalchemy import Column, Integer, Numeric, ForeignKey
+from sqlalchemy import Column, Integer, Numeric, ForeignKey, String
 from app.models.base import BaseModel
 
 class PaymentLine(BaseModel):

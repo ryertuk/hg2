@@ -4,10 +4,11 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
 from app.services.invoice_service import InvoiceService
 
+# جایگزین کلاس InvoiceTableModel
 class InvoiceTableModel(QAbstractTableModel):
-    def __init__(self, invoices):
+    def __init__(self, invoices_with_party):
         super().__init__()
-        self.invoices = invoices
+        self.invoices = invoices_with_party  # لیست tupleهای (Invoice, party_name)
         self.headers = ["سریال", "نوع", "طرف حساب", "تاریخ", "جمع کل", "وضعیت"]
 
     def rowCount(self, parent=QModelIndex()):
@@ -19,20 +20,15 @@ class InvoiceTableModel(QAbstractTableModel):
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
             return None
-        invoice = self.invoices[index.row()]
+        invoice, party_name = self.invoices[index.row()]  # ✅ تغییر اینجا
         col = index.column()
         if role == Qt.DisplayRole:
             if col == 0: return invoice.serial_full
             elif col == 1:
-                type_map = {
-                    "purchase": "خرید",
-                    "sale": "فروش",
-                    "purchase_return": "مرجوعی خرید",
-                    "sale_return": "مرجوعی فروش"
-                }
+                type_map = {"purchase": "خرید", "sale": "فروش", "purchase_return": "مرجوعی خرید", "sale_return": "مرجوعی فروش"}
                 return type_map.get(invoice.invoice_type, invoice.invoice_type)
-            elif col == 2: return "?"  # در مرحله بعد — JOIN با جدول parties
-            elif col == 3: return invoice.date_jalali
+            elif col == 2: return party_name or "-"  # ✅ نمایش نام طرف‌حساب
+            elif col == 3: return invoice.date_jalali or "—"  # ✅ تاریخ شمسی
             elif col == 4: return f"{invoice.total:,.0f}"
             elif col == 5: return invoice.status
         return None
@@ -88,7 +84,7 @@ class InvoiceListView(QWidget):
         self.setLayout(layout)
 
     def load_data(self):
-        self.invoices = self.service.get_all_invoices()  # باید در InvoiceService پیاده‌سازی شود
+        self.invoices = self.service.get_all_invoices_with_parties()  # ✅ اصلاح شد
         self.model = InvoiceTableModel(self.invoices)
         self.table.setModel(self.model)
         self.table.resizeColumnsToContents()
@@ -104,27 +100,34 @@ class InvoiceListView(QWidget):
         dialog = InvoiceDialog(self)
         if dialog.exec():
             data = dialog.get_data()
-            # در عمل: باید خطوط فاکتور هم جمع‌آوری و ارسال شوند
             try:
-                # self.service.create_invoice(data, []) — خطوط فاکتور در این مرحله پیاده‌سازی نشده
+                # ✅ دریافت خطوط فاکتور از مدل جدول
+                lines_data = dialog.table_model.lines_data
+                # ✅ ارسال خطوط فاکتور به سرویس
+                self.service.create_invoice(data, lines_data)
                 QMessageBox.information(self, "موفق", "فاکتور با موفقیت ایجاد شد.")
                 self.load_data()
             except Exception as e:
                 QMessageBox.critical(self, "خطا", f"خطا در ایجاد: {str(e)}")
-
     def edit_invoice(self):
+        from app.ui.invoices.invoice_dialog import InvoiceDialog  # ✅ اضافه شد
         selected = self.table.selectionModel().selectedRows()
         if not selected:
             QMessageBox.warning(self, "هشدار", "لطفاً یک فاکتور را انتخاب کنید.")
             return
         row = selected[0].row()
-        invoice = self.model.invoices[row]
+        invoice, party_name = self.model.invoices[row]  # ✅ invoice[0] نیست — چون در مدل tuple است
         dialog = InvoiceDialog(self, invoice)
         if dialog.exec():
             data = dialog.get_data()
-            # TODO: بارگذاری خطوط فاکتور و به‌روزرسانی
-            QMessageBox.information(self, "موفق", "فاکتور با موفقیت ویرایش شد.")
-            self.load_data()
+            lines_data = dialog.table_model.lines_data
+            try:
+                # فرض — باید update_invoice در سرویس اضافه شود
+                self.service.update_invoice(invoice.id, data, lines_data)
+                QMessageBox.information(self, "موفق", "فاکتور با موفقیت ویرایش شد.")
+                self.load_data()
+            except Exception as e:
+                QMessageBox.critical(self, "خطا", f"خطا در ویرایش: {str(e)}")
     
     def delete_invoice(self):
         selected = self.table.selectionModel().selectedRows()
@@ -132,8 +135,11 @@ class InvoiceListView(QWidget):
             QMessageBox.warning(self, "هشدار", "لطفاً یک فاکتور را انتخاب کنید.")
             return
         row = selected[0].row()
-        invoice = self.model.invoices[row]
+        invoice, party_name = self.model.invoices[row]  # ✅ tuple است
         if QMessageBox.question(self, "تأیید حذف", f"آیا از حذف فاکتور «{invoice.serial_full}» اطمینان دارید؟", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
-            self.service.delete_invoice(invoice.id)
-            QMessageBox.information(self, "موفق", "فاکتور حذف شد.")
-            self.load_data()
+            try:
+                self.service.delete_invoice(invoice.id)
+                QMessageBox.information(self, "موفق", "فاکتور حذف شد.")
+                self.load_data()
+            except Exception as e:
+                QMessageBox.critical(self, "خطا", f"خطا در حذف: {str(e)}")

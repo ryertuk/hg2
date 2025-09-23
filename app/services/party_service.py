@@ -32,3 +32,7 @@ class PartyService:
             raise Exception("طرف‌حساب یافت نشد.")
         self.db.delete(party)
         self.db.commit()
+        
+    # در کلاس PartyService — افزودن این متد
+    def get_party_by_id(self, party_id: int):
+        return self.db.query(Party).filter(Party.id == party_id).first()

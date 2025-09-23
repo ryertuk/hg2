@@ -37,3 +37,26 @@ class CheckService:
         self.db.commit()
         self.db.refresh(check)
         return check
+        
+    def delete_check(self, check_id: int):
+        """حذف یک چک"""
+        check = self.db.query(Check).filter(Check.id == check_id).first()
+        if not check:
+            raise Exception("چک یافت نشد.")
+        self.db.delete(check)
+        self.db.commit()
+
+    def update_check(self, check_id: int, data: dict):
+        """به‌روزرسانی یک چک"""
+        check = self.db.query(Check).filter(Check.id == check_id).first()
+        if not check:
+            raise Exception("چک یافت نشد.")
+    
+        # به‌روزرسانی فیلدها
+        for key, value in data.items():
+            if hasattr(check, key):
+                setattr(check, key, value)
+    
+        self.db.commit()
+        self.db.refresh(check)
+        return check

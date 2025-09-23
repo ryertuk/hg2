@@ -1,11 +1,10 @@
 # app/ui/checks/check_dialog.py
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                                QComboBox, QDateEdit, QDoubleSpinBox, QPushButton,
-                               QMessageBox, QCompleter)
-from PySide6.QtCore import Qt, QStringListModel
+                               QMessageBox, QCompleter, QToolButton)
+from PySide6.QtCore import Qt, QStringListModel, QEvent  # QEvent را import کنید
 from app.services.party_service import PartyService
-from app.services.bank_account_service import BankAccountService
-from app.services.date_service import jalali_to_gregorian
+from app.services.date_service import jalali_to_gregorian, gregorian_to_jalali
 import datetime
 
 class CheckDialog(QDialog):
@@ -13,18 +12,14 @@ class CheckDialog(QDialog):
         super().__init__(parent)
         self.check = check
         self.party_service = PartyService()
-        self.bank_service = BankAccountService()
         self.parties = []
-        self.bank_accounts = []
         self.selected_payer_id = None
         self.selected_payee_id = None
-        self.selected_bank_account_id = None
 
         self.setWindowTitle("چک جدید" if not check else "ویرایش چک")
         self.setLayoutDirection(Qt.RightToLeft)
         self.setup_ui()
         self.load_parties()
-        self.load_bank_accounts()
 
     def setup_ui(self):
         layout = QVBoxLayout()
@@ -48,65 +43,85 @@ class CheckDialog(QDialog):
         check_num_layout.addWidget(self.check_num_input)
         layout.addLayout(check_num_layout)
 
-        # حساب بانکی — با QComboBox
-        bank_account_layout = QHBoxLayout()
-        bank_account_layout.addWidget(QLabel("حساب بانکی:"))
-        self.bank_account_combo = QComboBox()
-        bank_account_layout.addWidget(self.bank_account_combo)
-        layout.addLayout(bank_account_layout)
-
-        # بانک — فقط نمایش (readonly)
+        # نام بانک — با QComboBox + لیست ثابت
         bank_layout = QHBoxLayout()
         bank_layout.addWidget(QLabel("نام بانک:"))
-        self.bank_display = QLineEdit()
-        self.bank_display.setReadOnly(True)
-        bank_layout.addWidget(self.bank_display)
+        self.bank_combo = QComboBox()
+        bank_list = [
+            "آینده", "اقتصاد نوین", "ایران زمین", "انصار", "پارسیان", "پاسارگاد",
+            "توسعه تعاون", "توسعه صادرات", "تجارت", "حکمت ایرانیان", "خاورمیانه",
+            "دی", "رسالت", "سپه", "سینا", "سرمایه", "سامان", "شهر","صادرات", "صنعت و معدن",
+            "کشاورزی", "کارآفرین", "قوامین", "گردشگری", "ملی","ملت", "مسکن", "مهر اقتصاد", "مهر ایران", "سایر"
+        ]
+        self.bank_combo.addItems(bank_list)
+        if self.check:
+            # تنظیم مقدار فعلی — اگر در لیست وجود داشت
+            try:
+                index = bank_list.index(self.check.bank_name)
+                self.bank_combo.setCurrentIndex(index)
+            except ValueError:
+                self.bank_combo.addItem(self.check.bank_name)
+                self.bank_combo.setCurrentIndex(len(bank_list))
+        bank_layout.addWidget(self.bank_combo)
         layout.addLayout(bank_layout)
 
-        # شماره حساب — فقط نمایش (readonly)
+        # شماره حساب — قابل ویرایش
         account_layout = QHBoxLayout()
         account_layout.addWidget(QLabel("شماره حساب:"))
-        self.account_display = QLineEdit()
-        self.account_display.setReadOnly(True)
-        account_layout.addWidget(self.account_display)
+        self.account_input = QLineEdit()
+        if self.check:
+            self.account_input.setText(self.check.account_number)
+        account_layout.addWidget(self.account_input)
         layout.addLayout(account_layout)
 
-        # مبلغ
+        # مبلغ — بدون دکمه +
         amount_layout = QHBoxLayout()
         amount_layout.addWidget(QLabel("مبلغ (ریال):"))
         self.amount_input = QDoubleSpinBox()
-        self.amount_input.setMaximum(999999999999)
+        self.amount_input.setMaximum(999999999999999)
         self.amount_input.setDecimals(0)
         if self.check:
             self.amount_input.setValue(float(self.check.amount))
+        
+        # تنظیم shortcut برای کلید +
+        self.amount_input.installEventFilter(self)
+        
         amount_layout.addWidget(self.amount_input)
         layout.addLayout(amount_layout)
 
-        # تاریخ صدور و سررسید — شمسی
+        # تاریخ صدور و سررسید — شمسی با فرمت 14--/--/--
         dates_layout = QHBoxLayout()
         dates_layout.addWidget(QLabel("تاریخ صدور (شمسی):"))
         self.issue_date_input = QLineEdit()
-        if self.check:
-            from jdatetime import date as jdate
-            j_issue = jdate.fromgregorian(date=self.check.issue_date)
-            self.issue_date_input.setText(j_issue.strftime("%Y/%m/%d"))
-        else:
-            from jdatetime import date as jdate
-            today = jdate.today().strftime("%Y/%m/%d")
-            self.issue_date_input.setText(today)
+        self.issue_date_input.setInputMask("1499/99/99")
+        self.issue_date_input.setText("14  /  /  ")
+        self.issue_date_input.setCursorPosition(2)  # قرار دادن курсور در ابتدای قسمت سال
         dates_layout.addWidget(self.issue_date_input)
-
+        
         dates_layout.addWidget(QLabel("سررسید (شمسی):"))
         self.due_date_input = QLineEdit()
-        if self.check:
-            j_due = jdate.fromgregorian(date=self.check.due_date)
-            self.due_date_input.setText(j_due.strftime("%Y/%m/%d"))
-        else:
-            today = jdate.today().strftime("%Y/%m/%d")
-            self.due_date_input.setText(today)
+        self.due_date_input.setInputMask("1499/99/99")
+        self.due_date_input.setText("14  /  /  ")
+        self.due_date_input.setCursorPosition(2)  # قرار دادن курсور در ابتدای قسمت سال
         dates_layout.addWidget(self.due_date_input)
         layout.addLayout(dates_layout)
-
+        
+        # اگر در حال ویرایش هستیم، تاریخ‌ها را از دیتابیس پر کنیم
+        if self.check:
+            # تاریخ صدور
+            if hasattr(self.check, 'date_jalali') and self.check.date_jalali:
+                jalali_date = self.convert_to_two_digit_year(self.check.date_jalali)
+                self.issue_date_input.setText(jalali_date)
+            elif self.check.issue_date:
+                j_issue = gregorian_to_jalali(self.check.issue_date)
+                j_issue = self.convert_to_two_digit_year(j_issue)
+                self.issue_date_input.setText(j_issue)
+            
+            # تاریخ سررسید
+            if self.check.due_date:
+                j_due = gregorian_to_jalali(self.check.due_date)
+                j_due = self.convert_to_two_digit_year(j_due)
+                self.due_date_input.setText(j_due)
         # طرف پرداخت‌کننده (payer)
         payer_layout = QHBoxLayout()
         payer_layout.addWidget(QLabel("پرداخت‌کننده:"))
@@ -156,7 +171,32 @@ class CheckDialog(QDialog):
         # اتصال سیگنال‌ها
         self.payer_input.textChanged.connect(self.filter_parties_payer)
         self.payee_input.textChanged.connect(self.filter_parties_payee)
-        self.bank_account_combo.currentIndexChanged.connect(self.on_bank_account_changed)
+    def convert_to_two_digit_year(self, jalali_date):
+        """تبدیل تاریخ شمسی به فرمت دو رقمی (۱۴۰۳ -> ۱۴۰۳)"""
+        if not jalali_date:
+            return "14  /  /  "
+        
+        try:
+            # جدا کردن قسمت‌های تاریخ
+            parts = jalali_date.split('/')
+            if len(parts) == 3:
+                year = parts[0]
+                if len(year) == 4:
+                    # گرفتن دو رقم آخر سال
+                    two_digit_year = year[2:]
+                    return f"14{two_digit_year}/{parts[1]}/{parts[2]}"
+                else:
+                    return f"14{year}/{parts[1]}/{parts[2]}"
+        except:
+            pass
+        return "14  /  /  "
+    def eventFilter(self, obj, event):
+        """مدیریت رویدادهای کیبورد برای فیلد مبلغ"""
+        if obj == self.amount_input and event.type() == QEvent.Type.KeyPress:
+            if event.key() == Qt.Key_Plus:
+                self.add_zeros_to_amount()
+                return True  # رویداد پردازش شده است
+        return super().eventFilter(obj, event)
 
     def load_parties(self):
         self.parties = self.party_service.get_all_parties()
@@ -177,40 +217,6 @@ class CheckDialog(QDialog):
                         self.payee_input.setText(f"{p.name} ({p.code})")
                         self.selected_payee_id = p.id
                         break
-
-    def load_bank_accounts(self):
-        self.bank_accounts = self.bank_service.get_all_bank_accounts()
-        if not self.bank_accounts:
-            # ایجاد حساب بانکی پیش‌فرض — فقط برای محیط توسعه
-            default_account = self.bank_service.create_bank_account({
-                "name": "حساب پیش‌فرض",
-                "bank_name": "بانک ملی",
-                "account_number": "1234567890",
-                "ledger_account_id": 1,
-                "currency": "IRR"
-            })
-            self.bank_accounts = [default_account]
-
-        self.bank_account_combo.clear()
-        for acc in self.bank_accounts:
-            self.bank_account_combo.addItem(f"{acc.bank_name} - {acc.account_number}", acc.id)
-
-        if self.check:
-            for i, acc in enumerate(self.bank_accounts):
-                if acc.id == self.check.bank_account_id:
-                    self.bank_account_combo.setCurrentIndex(i)
-                    self.on_bank_account_changed(i)
-                    break
-        else:
-            if self.bank_accounts:
-                self.on_bank_account_changed(0)
-
-    def on_bank_account_changed(self, index):
-        if index >= 0 and index < len(self.bank_accounts):
-            acc = self.bank_accounts[index]
-            self.bank_display.setText(acc.bank_name)
-            self.account_display.setText(acc.account_number)
-            self.selected_bank_account_id = acc.id
 
     def filter_parties_payer(self, text):
         if not text:
@@ -242,42 +248,134 @@ class CheckDialog(QDialog):
                 self.selected_payee_id = party.id
                 break
 
+    def add_zeros_to_amount(self):
+        """افزودن سه صفر به مبلغ — ضرب در 1000"""
+        current_value = self.amount_input.value()
+        new_value = current_value * 1000
+        self.amount_input.setValue(new_value)
+      
+        
     def get_data(self):
         direction = "received" if self.direction_combo.currentIndex() == 0 else "issued"
-
-        # تبدیل تاریخ شمسی به میلادی
-        issue_date = jalali_to_gregorian(self.issue_date_input.text().strip())
-        due_date = jalali_to_gregorian(self.due_date_input.text().strip())
-
+    
+        # پردازش تاریخ‌ها - گرفتن مقدار از فیلدها
+        issue_date_text = self.issue_date_input.text().replace(" ", "0")
+        due_date_text = self.due_date_input.text().replace(" ", "0")
+        
+        # اطمینان از کامل بودن تاریخ‌ها
+        if len(issue_date_text.replace("/", "")) < 6:
+            QMessageBox.warning(self, "خطا", "تاریخ صدور باید کامل پر شود.")
+            return None
+            
+        if len(due_date_text.replace("/", "")) < 6:
+            QMessageBox.warning(self, "خطا", "تاریخ سررسید باید کامل پر شود.")
+            return None
+        
+        # تبدیل به فرمت کامل شمسی (۱۴۰x/xx/xx)
+        # از آنجایی که InputMask داریم، فرمت 14xx/xx/xx است
+        # باید به 140x/xx/xx تبدیل شود
+        try:
+            # تاریخ صدور
+            if issue_date_text.startswith("14"):
+                # استخراج دو رقم آخر سال از 14xx
+                year_suffix = issue_date_text[2:4]  # دو رقم بعد از 14
+                full_year = "140" + year_suffix[0]  # 140 + اولین رقم
+                issue_date_text = f"{full_year}/{issue_date_text[5:7]}/{issue_date_text[8:10]}"
+            
+            # تاریخ سررسید
+            if due_date_text.startswith("14"):
+                year_suffix = due_date_text[2:4]  # دو رقم بعد از 14
+                full_year = "140" + year_suffix[0]  # 140 + اولین رقم
+                due_date_text = f"{full_year}/{due_date_text[5:7]}/{due_date_text[8:10]}"
+            
+            # تبدیل به میلادی
+            issue_date = jalali_to_gregorian(issue_date_text)
+            due_date = jalali_to_gregorian(due_date_text)
+            
+        except ValueError as e:
+            QMessageBox.warning(self, "خطا در تاریخ", f"تاریخ وارد شده معتبر نیست: {str(e)}")
+            return None
+        except Exception as e:
+            QMessageBox.warning(self, "خطا در تاریخ", f"خطا در پردازش تاریخ: {str(e)}")
+            return None
+    
         return {
             "check_number": self.check_num_input.text().strip(),
-            "bank_name": self.bank_display.text().strip(),
-            "account_number": self.account_display.text().strip(),
+            "bank_name": self.bank_combo.currentText().strip(),
+            "account_number": self.account_input.text().strip(),
             "direction": direction,
             "amount": int(self.amount_input.value()),
             "issue_date": issue_date,
             "due_date": due_date,
             "payer_party_id": self.selected_payer_id,
             "payee_party_id": self.selected_payee_id,
-            "created_by": 1,  # در عمل: از session کاربر جاری
-            "bank_account_id": self.selected_bank_account_id,
+            "created_by": 1,
+            "bank_account_id": 1,
         }
-
+        
     def validate(self):
         if not self.check_num_input.text().strip():
             QMessageBox.warning(self, "خطا", "شماره چک الزامی است.")
             return False
-        if not self.issue_date_input.text().strip():
-            QMessageBox.warning(self, "خطا", "تاریخ صدور الزامی است.")
+        
+        # بررسی تاریخ‌ها - باید کامل پر شده باشند
+        issue_date_text = self.issue_date_input.text()
+        due_date_text = self.due_date_input.text()
+        
+        if " " in issue_date_text or len(issue_date_text.replace("/", "")) < 8:
+            QMessageBox.warning(self, "خطا", "تاریخ صدور باید کامل پر شود.")
             return False
-        if not self.due_date_input.text().strip():
-            QMessageBox.warning(self, "خطا", "تاریخ سررسید الزامی است.")
+            
+        if " " in due_date_text or len(due_date_text.replace("/", "")) < 8:
+            QMessageBox.warning(self, "خطا", "تاریخ سررسید باید کامل پر شود.")
             return False
-        if not self.selected_bank_account_id:
-            QMessageBox.warning(self, "خطا", "لطفاً یک حساب بانکی انتخاب کنید.")
+            
+        if not self.bank_combo.currentText().strip():
+            QMessageBox.warning(self, "خطا", "نام بانک الزامی است.")
+            return False
+        if not self.account_input.text().strip():
+            QMessageBox.warning(self, "خطا", "شماره حساب الزامی است.")
             return False
         return True
 
+    def validate_and_set_parties(self):
+        """اعتبارسنجی و تنظیم طرف‌حساب‌ها بر اساس متن وارد شده — حتی اگر از لیست انتخاب نشده باشد"""
+        payer_text = self.payer_input.text().strip()
+        payee_text = self.payee_input.text().strip()
+
+        # پرداخت‌کننده
+        if payer_text:
+            self.selected_payer_id = self.find_party_by_text(payer_text)
+            if self.selected_payer_id is None:
+                raise ValueError(f"طرف‌حساب پرداخت‌کننده «{payer_text}» یافت نشد.")
+
+        # دریافت‌کننده
+        if payee_text:
+            self.selected_payee_id = self.find_party_by_text(payee_text)
+            if self.selected_payee_id is None:
+                raise ValueError(f"طرف‌حساب دریافت‌کننده «{payee_text}» یافت نشد.")
+    
+    def find_party_by_text(self, text):
+        """پیدا کردن طرف‌حساب بر اساس نام یا کد — حتی اگر دقیقاً مطابقت نداشته باشد"""
+        if not text:
+            return None
+        for party in self.parties:
+            if text == party.name or text == party.code or text in f"{party.name} ({party.code})":
+                return party.id
+        return None
+        
     def accept(self):
         if self.validate():
-            super().accept()
+            try:
+                # ✅ تنظیم طرف‌حساب‌ها بر اساس متن وارد شده
+                self.validate_and_set_parties()
+                super().accept()
+            except ValueError as e:
+                QMessageBox.warning(self, "خطا", str(e))
+                
+            data = self.get_data()
+            if data is not None:  # فقط اگر داده‌ها معتبر باشند
+                super().accept()
+                
+       
+        

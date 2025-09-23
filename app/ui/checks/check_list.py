@@ -8,13 +8,26 @@ class CheckTableModel(QAbstractTableModel):
     def __init__(self, checks):
         super().__init__()
         self.checks = checks
-        self.headers = ["شماره چک", "بانک", "مبلغ", "سررسید", "وضعیت", "جهت"]
+        self.headers = ["شماره چک", "بانک", "مبلغ", "تاریخ صدور", "سررسید", "پرداخت‌کننده", "دریافت‌کننده", "وضعیت", "جهت"]
+        
+        # ✅ بارگذاری یک‌باره تمام طرف‌حساب‌ها — برای جلوگیری از فراخوانی مکرر دیتابیس
+        from app.services.party_service import PartyService
+        self.party_service = PartyService()
+        self.parties = {p.id: p for p in self.party_service.get_all_parties()}  # کش به صورت dict
 
     def rowCount(self, parent=QModelIndex()):
+        """تعداد ردیف‌های داده را برمی‌گرداند"""
         return len(self.checks)
 
     def columnCount(self, parent=QModelIndex()):
+        """تعداد ستون‌ها را برمی‌گرداند"""
         return len(self.headers)
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        """هدرهای ستون‌ها را برمی‌گرداند"""
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return self.headers[section]
+        return None
 
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
@@ -25,15 +38,33 @@ class CheckTableModel(QAbstractTableModel):
             if col == 0: return check.check_number
             elif col == 1: return check.bank_name
             elif col == 2: return f"{check.amount:,.0f}"
-            elif col == 3: return check.due_date.strftime("%Y-%m-%d") if check.due_date else ""
-            elif col == 4: return check.status
-            elif col == 5: return "دریافتی" if check.direction == "received" else "پرداختی"
+            elif col == 3:  # تاریخ صدور — شمسی
+                return check.date_jalali if hasattr(check, 'date_jalali') else self.gregorian_to_jalali(check.issue_date)
+            elif col == 4:  # سررسید — شمسی
+                return self.gregorian_to_jalali(check.due_date)
+            elif col == 5:  # پرداخت‌کننده
+                if check.payer_party_id:
+                    from app.services.party_service import PartyService
+                    party = PartyService().get_party_by_id(check.payer_party_id)
+                    return party.name if party else "-"
+                return "-"
+            elif col == 6:  # دریافت‌کننده
+                if check.payee_party_id:
+                    from app.services.party_service import PartyService
+                    party = PartyService().get_party_by_id(check.payee_party_id)
+                    return party.name if party else "-"
+                return "-"
+            elif col == 7: return check.status
+            elif col == 8: return "دریافتی" if check.direction == "received" else "پرداختی"
         return None
 
-    def headerData(self, section, orientation, role=Qt.DisplayRole):
-        if role == Qt.DisplayRole and orientation == Qt.Horizontal:
-            return self.headers[section]
-        return None
+    def gregorian_to_jalali(self, gregorian_date):
+        """تبدیل تاریخ میلادی به شمسی — برای نمایش در جدول"""
+        if not gregorian_date:
+            return ""
+        from jdatetime import date as jdate
+        j = jdate.fromgregorian(date=gregorian_date)
+        return j.strftime("%Y/%m/%d")
 
 class CheckListView(QWidget):
     def __init__(self):
@@ -104,8 +135,8 @@ class CheckListView(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "خطا", f"خطا در ایجاد: {str(e)}")
 
-
     def edit_check(self):
+        from app.ui.checks.check_dialog import CheckDialog
         selected = self.table.selectionModel().selectedRows()
         if not selected:
             QMessageBox.warning(self, "هشدار", "لطفاً یک چک را انتخاب کنید.")
@@ -115,10 +146,13 @@ class CheckListView(QWidget):
         dialog = CheckDialog(self, check)
         if dialog.exec():
             data = dialog.get_data()
-            # TODO: به‌روزرسانی چک
-            QMessageBox.information(self, "موفق", "چک با موفقیت ویرایش شد.")
-            self.load_data()
-    
+            try:
+                self.service.update_check(check.id, data)
+                QMessageBox.information(self, "موفق", "چک با موفقیت ویرایش شد.")
+                self.load_data()
+            except Exception as e:
+                QMessageBox.critical(self, "خطا", f"خطا در ویرایش: {str(e)}")
+
     def delete_check(self):
         selected = self.table.selectionModel().selectedRows()
         if not selected:
@@ -127,6 +161,9 @@ class CheckListView(QWidget):
         row = selected[0].row()
         check = self.model.checks[row]
         if QMessageBox.question(self, "تأیید حذف", f"آیا از حذف چک «{check.check_number}» اطمینان دارید؟", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
-            self.service.delete_check(check.id)
-            QMessageBox.information(self, "موفق", "چک حذف شد.")
-            self.load_data()
+            try:
+                self.service.delete_check(check.id)
+                QMessageBox.information(self, "موفق", "چک حذف شد.")
+                self.load_data()
+            except Exception as e:
+                QMessageBox.critical(self, "خطا", f"خطا در حذف: {str(e)}")

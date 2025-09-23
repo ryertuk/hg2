@@ -15,6 +15,9 @@ class Item(BaseModel):
     active = Column(Boolean, default=True)
     barcode = Column(String(100), nullable=True, unique=True)
     category_id = Column(Integer, nullable=True)  # FK → categories.id (در آینده)
-
+    # ✅ فیلدهای جدید — قیمت آخرین خرید و فروش
+    last_purchase_price = Column(Numeric(18, 0), default=0)  # ریال
+    last_sale_price = Column(Numeric(18, 0), default=0)      # ریال
+    
     def __repr__(self):
         return f"<Item {self.name} ({self.sku})>"

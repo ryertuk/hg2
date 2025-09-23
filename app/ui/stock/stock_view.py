@@ -1,6 +1,6 @@
 # app/ui/stock/stock_view.py
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                               QTableView, QLineEdit, QLabel, QMessageBox, QHeaderView)
+                               QTableView, QLineEdit, QLabel, QMessageBox, QHeaderView, QInputDialog)
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
 from app.services.stock_service import StockService
 from app.services.item_service import ItemService
@@ -73,6 +73,7 @@ class StockView(QWidget):
         btn_layout = QHBoxLayout()
         self.adjust_btn = QPushButton("⚖️ تعدیل موجودی")
         self.adjust_btn.clicked.connect(self.adjust_stock)
+        
         self.refresh_btn = QPushButton("🔄 تازه‌سازی")
         self.refresh_btn.clicked.connect(self.load_data)
         btn_layout.addWidget(self.refresh_btn)
@@ -124,4 +125,54 @@ class StockView(QWidget):
         self.model.layoutChanged.emit()
 
     def adjust_stock(self):
-        QMessageBox.information(self, "به زودی", "امکان تعدیل دستی موجودی در نسخه بعدی اضافه خواهد شد.")
+        selected = self.table.selectionModel().selectedRows()
+        if not selected:
+            QMessageBox.warning(self, "هشدار", "لطفاً یک کالا را انتخاب کنید.")
+            return
+        row = selected[0].row()
+        item, current_stock, last_cost = self.items[row]
+        
+        # تبدیل current_stock به float
+        current_stock_float = float(current_stock)
+        
+        # ایجاد دیالوگ تعدیل
+        new_qty, ok = QInputDialog.getDouble(
+            self,
+            "تعدیل موجودی",
+            f"موجودی فعلی: {current_stock}\nموجودی جدید را وارد کنید:",
+            current_stock_float,  # استفاده از مقدار float
+            0,
+            999999,
+            4
+        )
+        if not ok:
+            return
+        
+        # محاسبه تفاوت - هر دو float هستند
+        adjustment_qty = new_qty - current_stock_float
+        if adjustment_qty == 0:
+            QMessageBox.information(self, "اطلاع", "تغییری اعمال نشد.")
+            return
+        
+        # دریافت واحد و قیمت
+        unit_id = item.base_unit_id
+        cost_per_unit = float(last_cost) if last_cost else 0.0  # تبدیل به float
+        
+        try:
+            # ✅ ایجاد تحرک تعدیل
+            from app.services.stock_service import StockService
+            stock_service = StockService()
+            movement_data = {
+                "item_id": item.id,
+                "qty": adjustment_qty,
+                "unit_id": unit_id,
+                "movement_type": "adjustment",
+                "reference_type": "manual",
+                "reference_id": None,
+                "cost_per_unit": cost_per_unit,
+            }
+            stock_service.add_movement(movement_data)
+            QMessageBox.information(self, "موفق", "موجودی با موفقیت تعدیل شد.")
+            self.load_data()
+        except Exception as e:
+            QMessageBox.critical(self, "خطا", f"خطا در تعدیل موجودی: {str(e)}")

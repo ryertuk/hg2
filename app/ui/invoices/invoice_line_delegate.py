@@ -95,9 +95,38 @@ class InvoiceLineDelegate(QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         col = index.column()
         if isinstance(editor, QLineEdit):
-            if col == 0:  # item_id
+            if col == 0:  # item_id — با جستجو
                 text = editor.text()
-                model.setData(index, text, Qt.EditRole)  # ✅ ارسال متن — مدل خودش item_id را استخراج می‌کند
+                model.setData(index, text, Qt.EditRole)
+                
+                # ✅ پیشنهاد خودکار قیمت واحد بر اساس آخرین قیمت خرید/فروش
+                row = index.row()
+                # پیدا کردن item_id از متن وارد شده
+                selected_item = None
+                for item in self.items:
+                    if f"{item.name} ({item.sku})" == text:
+                        selected_item = item
+                        break
+                
+                if selected_item:
+                    # دسترسی به parent (InvoiceDialog) برای دریافت نوع فاکتور
+                    parent_dialog = self.parent()
+                    if hasattr(parent_dialog, 'type_combo'):
+                        invoice_type_text = parent_dialog.type_combo.currentText()
+                        from app.services.item_service import ItemService
+                        item_service = ItemService()
+                        
+                        if invoice_type_text == "خرید":
+                            unit_price = selected_item.last_purchase_price or 0
+                        else:  # فروش
+                            unit_price = selected_item.last_sale_price or 0
+                        
+                        if unit_price > 0:
+                            # تنظیم قیمت واحد در ستون 3 (unit_price)
+                            price_index = model.index(row, 3)
+                            model.setData(price_index, unit_price, Qt.EditRole)
+                            # محاسبه مجدد line_total — در مدل
+                            model.recalculate_line_total(row)
             elif col == 7:  # notes
                 model.setData(index, editor.text(), Qt.EditRole)
         elif isinstance(editor, QComboBox):
@@ -108,3 +137,8 @@ class InvoiceLineDelegate(QStyledItemDelegate):
                     model.setData(index, unit.id, Qt.EditRole)
         elif isinstance(editor, QDoubleSpinBox):
             model.setData(index, editor.value(), Qt.EditRole)
+            
+            # ✅ اگر تغییر در qty یا unit_price بود — محاسبه مجدد line_total
+            if col in [1, 3]:  # qty یا unit_price
+                row = index.row()
+                model.recalculate_line_total(row)

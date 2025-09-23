@@ -8,6 +8,7 @@ from .invoice_line_delegate import InvoiceLineDelegate
 from app.services.date_service import gregorian_to_jalali, jalali_to_gregorian
 from app.services.party_service import PartyService
 
+
 class InvoiceDialog(QDialog):
     def __init__(self, parent=None, invoice=None):
         super().__init__(parent)
@@ -21,6 +22,9 @@ class InvoiceDialog(QDialog):
         self.resize(900, 600)  # ✅ اندازه صفحه بزرگتر
         self.setup_ui()
         self.load_parties()
+        # ✅ بارگذاری خطوط فاکتور در حالت ویرایش
+        if invoice:
+            self.load_invoice_lines(invoice)
 
     def setup_ui(self):
         layout = QVBoxLayout()
@@ -171,7 +175,26 @@ class InvoiceDialog(QDialog):
     
         return len(rows_to_remove) > 0
 
-
+    def load_invoice_lines(self, invoice):
+        """بارگذاری خطوط فاکتور در حالت ویرایش"""
+        from app.services.invoice_service import InvoiceService
+        from app.models.invoice_line import InvoiceLine 
+        service = InvoiceService()
+        lines = service.db.query(InvoiceLine).filter(InvoiceLine.invoice_id == invoice.id).all()
+        lines_data = []
+        for line in lines:
+            lines_data.append({
+                'item_id': line.item_id,
+                'qty': float(line.qty),
+                'unit_id': line.unit_id,
+                'unit_price': int(line.unit_price),
+                'discount': int(line.discount),
+                'tax': int(line.tax),
+                'line_total': int(line.line_total),
+                'notes': line.notes or ""
+            })
+        self.table_model.lines_data = lines_data
+        self.table_model.layoutChanged.emit()
  
     def has_valid_data(self):
         """✅ بررسی وجود داده معتبر در جدول"""
@@ -187,30 +210,30 @@ class InvoiceDialog(QDialog):
         return False
 
 
+    # در متد get_data — جایگزین کامل
     def get_data(self):
         type_reverse = {0: "purchase", 1: "sale", 2: "purchase_return", 3: "sale_return"}
-
-        # ✅ اعتبارسنجی انتخاب طرف‌حساب - اصلاح شده
         if self.selected_party_id is None:
-            # بررسی مجدد در صورتی که طرف حساب از قبل انتخاب شده اما selected_party_id تنظیم نشده
-            party_text = self.party_input.text().strip()
-            if party_text:
-                for party in self.parties:
-                    if f"{party.name} ({party.code})" == party_text:
-                        self.selected_party_id = party.id
-                        break
-            
-            # اگر هنوز انتخاب نشده، خطا بده
-            if self.selected_party_id is None:
-                raise ValueError("لطفاً یک طرف‌حساب انتخاب کنید.")
-
+            raise ValueError("لطفاً یک طرف‌حساب انتخاب کنید.")
+        
+        from app.services.date_service import jalali_to_gregorian
+        jalali_str = self.date_input.text().strip()
+        gregorian_date = jalali_to_gregorian(jalali_str)
+        
+        # ✅ تولید serial_full منحصربه‌فرد — بر اساس تاریخ و زمان شمسی
+        from jdatetime import datetime as jdatetime
+        now = jdatetime.now()
+        # قالب: INV-14040631-142305
+        serial_full = f"INV-{now.strftime('%Y%m%d')}-{now.strftime('%H%M%S')}"
+        
         return {
             "invoice_type": type_reverse[self.type_combo.currentIndex()],
             "serial": "INV",
-            "number": 1,
-            "serial_full": "INV-1404-0001",
-            "party_id": self.selected_party_id,  # ✅ از selected_party_id استفاده می‌شود
-            "date_jalali": self.date_input.text().strip(),
+            "number": 1,  # در عمل: می‌تواند حذف شود — چون دیگر نیازی به شماره سریالی نیست
+            "serial_full": serial_full,  # ✅ منحصربه‌فرد — بدون نیاز به دیتابیس
+            "party_id": self.selected_party_id,
+            "date_gregorian": gregorian_date,
+            "date_jalali": jalali_str,
             "created_by": 1,
         }
 

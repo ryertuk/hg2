@@ -96,7 +96,29 @@ class ItemDialog(QDialog):
         self.active_check.setChecked(self.item.active if self.item else True)
         active_layout.addWidget(self.active_check)
         layout.addLayout(active_layout)
+        
+        # قیمت
 
+        price_layout = QHBoxLayout()
+        price_layout.addWidget(QLabel("قیمت آخرین خرید (ریال):"))
+        self.purchase_price_input = QDoubleSpinBox()
+        self.purchase_price_input.setDecimals(0)
+        self.purchase_price_input.setMaximum(999999999999)
+        if self.item and self.item.last_purchase_price:
+            self.purchase_price_input.setValue(float(self.item.last_purchase_price))
+        price_layout.addWidget(self.purchase_price_input)
+        layout.addLayout(price_layout)
+        
+        sale_price_layout = QHBoxLayout()
+        sale_price_layout.addWidget(QLabel("قیمت آخرین فروش (ریال):"))
+        self.sale_price_input = QDoubleSpinBox()
+        self.sale_price_input.setDecimals(0)
+        self.sale_price_input.setMaximum(999999999999)
+        if self.item and self.item.last_sale_price:
+            self.sale_price_input.setValue(float(self.item.last_sale_price))
+        sale_price_layout.addWidget(self.sale_price_input)
+        layout.addLayout(sale_price_layout)
+        
         # Buttons
         btn_layout = QHBoxLayout()
         save_btn = QPushButton("ذخیره")
@@ -121,6 +143,8 @@ class ItemDialog(QDialog):
             "width": self.width_input.value() if unit_type == "measure" else None,
             "barcode": self.barcode_input.text().strip() or None,
             "active": self.active_check.isChecked(),
+            "last_purchase_price": int(self.purchase_price_input.value()),
+            "last_sale_price": int(self.sale_price_input.value()),
         }
 
     def validate(self):
