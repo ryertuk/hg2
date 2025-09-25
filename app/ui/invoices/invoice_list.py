@@ -1,6 +1,6 @@
 # app/ui/invoices/invoice_list.py
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                               QTableView, QLineEdit, QLabel, QMessageBox)
+                               QTableView, QLineEdit, QLabel, QMessageBox, QDialog)
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
 from app.services.invoice_service import InvoiceService
 
@@ -98,36 +98,72 @@ class InvoiceListView(QWidget):
     def add_invoice(self):
         from app.ui.invoices.invoice_dialog import InvoiceDialog
         dialog = InvoiceDialog(self)
-        if dialog.exec():
-            data = dialog.get_data()
-            try:
-                # ✅ دریافت خطوط فاکتور از مدل جدول
-                lines_data = dialog.table_model.lines_data
-                # ✅ ارسال خطوط فاکتور به سرویس
-                self.service.create_invoice(data, lines_data)
-                QMessageBox.information(self, "موفق", "فاکتور با موفقیت ایجاد شد.")
-                self.load_data()
-            except Exception as e:
-                QMessageBox.critical(self, "خطا", f"خطا در ایجاد: {str(e)}")
+        
+        # حلقه تا زمانی که کاربر عملیات را لغو کند یا داده‌ها با موفقیت ذخیره شوند
+        while True:
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                try:
+                    # ✅ دریافت خطوط فاکتور از مدل جدول
+                    lines_data = dialog.table_model.lines_data
+                    # ✅ ارسال خطوط فاکتور به سرویس
+                    self.service.create_invoice(data, lines_data)
+                    QMessageBox.information(self, "موفق", "فاکتور با موفقیت ایجاد شد.")
+                    self.load_data()
+                    break  # خروج از حلقه در صورت موفقیت
+                except Exception as e:
+                    # نمایش پیغام خطا و دادن انتخاب به کاربر
+                    reply = QMessageBox.critical(
+                        self, 
+                        "خطا در ایجاد فاکتور", 
+                        f"خطا در ایجاد فاکتور: {str(e)}\n\nآیا می‌خواهید مجدداً تلاش کنید؟",
+                        QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel,
+                        QMessageBox.StandardButton.Retry
+                    )
+                    if reply == QMessageBox.StandardButton.Cancel:
+                        break  # خروج از حلقه در صورت لغو توسط کاربر
+                    # در صورت انتخاب Retry، حلقه ادامه می‌یابد و پنجره دوباره نمایش داده می‌شود
+            else:
+                # کاربر دکمه Cancel را زده است
+                break
+    
     def edit_invoice(self):
-        from app.ui.invoices.invoice_dialog import InvoiceDialog  # ✅ اضافه شد
+        from app.ui.invoices.invoice_dialog import InvoiceDialog
         selected = self.table.selectionModel().selectedRows()
         if not selected:
             QMessageBox.warning(self, "هشدار", "لطفاً یک فاکتور را انتخاب کنید.")
             return
+        
         row = selected[0].row()
-        invoice, party_name = self.model.invoices[row]  # ✅ invoice[0] نیست — چون در مدل tuple است
+        invoice, party_name = self.model.invoices[row]
+        
         dialog = InvoiceDialog(self, invoice)
-        if dialog.exec():
-            data = dialog.get_data()
-            lines_data = dialog.table_model.lines_data
-            try:
-                # فرض — باید update_invoice در سرویس اضافه شود
-                self.service.update_invoice(invoice.id, data, lines_data)
-                QMessageBox.information(self, "موفق", "فاکتور با موفقیت ویرایش شد.")
-                self.load_data()
-            except Exception as e:
-                QMessageBox.critical(self, "خطا", f"خطا در ویرایش: {str(e)}")
+        
+        # حلقه تا زمانی که کاربر عملیات را لغو کند یا داده‌ها با موفقیت ذخیره شوند
+        while True:
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                data = dialog.get_data()
+                lines_data = dialog.table_model.lines_data
+                try:
+                    self.service.update_invoice(invoice.id, data, lines_data)
+                    QMessageBox.information(self, "موفق", "فاکتور با موفقیت ویرایش شد.")
+                    self.load_data()
+                    break  # خروج از حلقه در صورت موفقیت
+                except Exception as e:
+                    # نمایش پیغام خطا و دادن انتخاب به کاربر
+                    reply = QMessageBox.critical(
+                        self, 
+                        "خطا در ویرایش فاکتور", 
+                        f"خطا در ویرایش فاکتور: {str(e)}\n\nآیا می‌خواهید مجدداً تلاش کنید؟",
+                        QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel,
+                        QMessageBox.StandardButton.Retry
+                    )
+                    if reply == QMessageBox.StandardButton.Cancel:
+                        break  # خروج از حلقه در صورت لغو توسط کاربر
+                    # در صورت انتخاب Retry، حلقه ادامه می‌یابد و پنجره دوباره نمایش داده می‌شود
+            else:
+                # کاربر دکمه Cancel را زده است
+                break
     
     def delete_invoice(self):
         selected = self.table.selectionModel().selectedRows()
