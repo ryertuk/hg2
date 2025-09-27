@@ -1,8 +1,9 @@
 # app/ui/invoices/invoice_list.py
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                               QTableView, QLineEdit, QLabel, QMessageBox, QDialog)
+                               QTableView, QLineEdit, QLabel, QMessageBox, QDialog, QHeaderView)
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
 from app.services.invoice_service import InvoiceService
+from PySide6.QtCore import QSortFilterProxyModel
 
 # جایگزین کلاس InvoiceTableModel
 class InvoiceTableModel(QAbstractTableModel):
@@ -64,9 +65,27 @@ class InvoiceListView(QWidget):
 
         # Table
         self.table = QTableView()
-        self.table.setSelectionBehavior(QTableView.SelectRows)
-        self.table.setEditTriggers(QTableView.NoEditTriggers)
+        
+        # 1. فقط یک سطر انتخاب شود
+        self.table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        
+        # 2. استفاده از Proxy Model برای سورت پیشرفته
+        self.proxy_model = QSortFilterProxyModel()
+        self.proxy_model.setSortCaseSensitivity(Qt.CaseInsensitive)
+        
+        # 3. اندازه ستون ها اتوماتیک اضافه شود
+        #self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        # یا برای stretch کردن ستون‌ها:
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        # تنظیمات اضافی برای بهبود ظاهر
+        self.table.setAlternatingRowColors(True)  # رنگ‌آمیزی متناوب سطرها
+        #self.table.setShowGrid(False)   خطوط جدول غیرفعال
+        self.table.verticalHeader().setVisible(True)  # مخفی کردن شماره سطرها
+        self.table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
+        
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -84,17 +103,51 @@ class InvoiceListView(QWidget):
         self.setLayout(layout)
 
     def load_data(self):
-        self.invoices = self.service.get_all_invoices_with_parties()  # ✅ اصلاح شد
-        self.model = InvoiceTableModel(self.invoices)
-        self.table.setModel(self.model)
-        self.table.resizeColumnsToContents()
+        try:
+            # دریافت داده‌ها از سرویس
+            self.invoices = self.service.get_all_invoices_with_parties()
+            
+            # ایجاد مدل و تنظیم آن روی جدول
+            self.model = InvoiceTableModel(self.invoices)
+            
+            # استفاده از Proxy Model برای سورت پیشرفته (اختیاری)
+            self.proxy_model = QSortFilterProxyModel()
+            self.proxy_model.setSourceModel(self.model)
+            self.proxy_model.setSortCaseSensitivity(Qt.CaseInsensitive)
+            
+            # تنظیم مدل روی جدول
+            self.table.setModel(self.proxy_model)
+            
+            # فعال کردن قابلیت سورت
+            self.table.setSortingEnabled(True)
+            
+            # اطمینان از نمایش داده‌ها
+            self.table.viewport().update()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "خطا در بارگذاری داده‌ها", 
+                               f"خطا در دریافت اطلاعات فاکتورها:\n{str(e)}")
 
     def filter_data(self):
         text = self.search_input.text().lower()
-        filtered = [inv for inv in self.invoices if text in inv.serial_full.lower()]
+        if not text:
+            self.model.invoices = self.invoices
+            self.model.layoutChanged.emit()
+            return
+        
+        # ✅ inv یک tuple است: (Invoice, party_name)
+        # ✅ پس باید از inv[0] برای دسترسی به فیلدهای Invoice استفاده کرد
+        filtered = []
+        for inv in self.invoices:
+            try:
+                if text in inv[0].serial_full.lower():
+                    filtered.append(inv)
+            except Exception:
+                continue  # برای جلوگیری از خطا در صورت وجود داده نامعتبر
+        
         self.model.invoices = filtered
         self.model.layoutChanged.emit()
-
+        
     def add_invoice(self):
         from app.ui.invoices.invoice_dialog import InvoiceDialog
         dialog = InvoiceDialog(self)
@@ -108,24 +161,31 @@ class InvoiceListView(QWidget):
                     lines_data = dialog.table_model.lines_data
                     # ✅ ارسال خطوط فاکتور به سرویس
                     self.service.create_invoice(data, lines_data)
-                    QMessageBox.information(self, "موفق", "فاکتور با موفقیت ایجاد شد.")
+                    QMessageBox.information(self, "موفقیت", "فاکتور با موفقیت ایجاد شد.")
                     self.load_data()
                     break  # خروج از حلقه در صورت موفقیت
                 except Exception as e:
-                    # نمایش پیغام خطا و دادن انتخاب به کاربر
-                    reply = QMessageBox.critical(
-                        self, 
-                        "خطا در ایجاد فاکتور", 
-                        f"خطا در ایجاد فاکتور: {str(e)}\n\nآیا می‌خواهید مجدداً تلاش کنید؟",
-                        QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel,
-                        QMessageBox.StandardButton.Retry
-                    )
-                    if reply == QMessageBox.StandardButton.Cancel:
-                        break  # خروج از حلقه در صورت لغو توسط کاربر
-                    # در صورت انتخاب Retry، حلقه ادامه می‌یابد و پنجره دوباره نمایش داده می‌شود
+                    # نمایش پیغام خطا با دکمه‌های فارسی
+                    msg = QMessageBox(self)
+                    msg.setIcon(QMessageBox.Critical)
+                    msg.setWindowTitle("خطا در ایجاد فاکتور")
+                    msg.setText(f"خطایی رخ داد:\n{str(e)}")
+                    msg.setInformativeText("می‌خواهید دوباره تلاش کنید یا انصراف دهید؟")
+    
+                    # دکمه‌های فارسی
+                    btn_retry = msg.addButton("تلاش مجدد", QMessageBox.AcceptRole)
+                    btn_cancel = msg.addButton("انصراف", QMessageBox.RejectRole)
+    
+                    msg.setDefaultButton(btn_retry)
+                    msg.exec()
+    
+                    if msg.clickedButton() == btn_cancel:
+                        break  # خروج از حلقه در صورت انتخاب "انصراف"
+                    # در غیر این صورت (تلاش مجدد)، حلقه ادامه می‌یابد
             else:
-                # کاربر دکمه Cancel را زده است
+                # کاربر دکمه انصراف (Cancel) را زده است
                 break
+    
     
     def edit_invoice(self):
         from app.ui.invoices.invoice_dialog import InvoiceDialog
@@ -146,24 +206,31 @@ class InvoiceListView(QWidget):
                 lines_data = dialog.table_model.lines_data
                 try:
                     self.service.update_invoice(invoice.id, data, lines_data)
-                    QMessageBox.information(self, "موفق", "فاکتور با موفقیت ویرایش شد.")
+                    QMessageBox.information(self, "موفقیت", "فاکتور با موفقیت ویرایش شد.")
                     self.load_data()
                     break  # خروج از حلقه در صورت موفقیت
                 except Exception as e:
-                    # نمایش پیغام خطا و دادن انتخاب به کاربر
-                    reply = QMessageBox.critical(
-                        self, 
-                        "خطا در ویرایش فاکتور", 
-                        f"خطا در ویرایش فاکتور: {str(e)}\n\nآیا می‌خواهید مجدداً تلاش کنید؟",
-                        QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel,
-                        QMessageBox.StandardButton.Retry
-                    )
-                    if reply == QMessageBox.StandardButton.Cancel:
-                        break  # خروج از حلقه در صورت لغو توسط کاربر
-                    # در صورت انتخاب Retry، حلقه ادامه می‌یابد و پنجره دوباره نمایش داده می‌شود
+                    # نمایش پیغام خطا با دکمه‌های فارسی
+                    msg = QMessageBox(self)
+                    msg.setIcon(QMessageBox.Critical)
+                    msg.setWindowTitle("خطا در ویرایش فاکتور")
+                    msg.setText(f"خطایی رخ داد:\n{str(e)}")
+                    msg.setInformativeText("می‌خواهید دوباره تلاش کنید یا انصراف دهید؟")
+    
+                    # دکمه‌های فارسی
+                    btn_retry = msg.addButton("تلاش مجدد", QMessageBox.AcceptRole)
+                    btn_cancel = msg.addButton("انصراف", QMessageBox.RejectRole)
+    
+                    msg.setDefaultButton(btn_retry)
+                    msg.exec()
+    
+                    if msg.clickedButton() == btn_cancel:
+                        break  # خروج از حلقه در صورت انتخاب "انصراف"
+                    # در غیر این صورت (تلاش مجدد)، حلقه ادامه می‌یابد
             else:
-                # کاربر دکمه Cancel را زده است
+                # کاربر دکمه انصراف را زده است
                 break
+    
     
     def delete_invoice(self):
         selected = self.table.selectionModel().selectedRows()

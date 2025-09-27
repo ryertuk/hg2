@@ -106,7 +106,15 @@ class InvoiceDialog(QDialog):
         self.party_input.textChanged.connect(self.filter_parties)
 
     def keyPressEvent(self, event: QKeyEvent):
-        if event.text() == '*':
+        # کلیدهای قابل قبول برای اجرای عملیات
+        trigger_keys = {
+            Qt.Key.Key_Return, 
+            Qt.Key.Key_Enter,
+            # اگر می‌خواهید کلیدهای دیگری هم اضافه کنید
+            # Qt.Key.Key_Space,  # کلید Space
+        }
+        
+        if event.key() in trigger_keys:
             self.add_invoice_line()
             event.accept()
         else:
@@ -140,6 +148,17 @@ class InvoiceDialog(QDialog):
 
     def add_invoice_line(self):
         self.table_model.add_line()
+        
+        # رفتن به سطر آخر
+        last_row = self.table_model.rowCount() - 1
+        
+        # انتخاب سلول اول از سطر آخر
+        index = self.table_model.index(last_row, 0)
+        self.table.setCurrentIndex(index)
+        
+        # فعال کردن حالت edit برای سلول انتخاب شده
+        self.table.edit(index)
+        
         self.table.scrollToBottom()
 
     def remove_invoice_line(self):
@@ -246,28 +265,6 @@ class InvoiceDialog(QDialog):
             QMessageBox.warning(self, "خطا", "جدول فاکتور نمی‌تواند خالی باشد.", QMessageBox.Ok)
             return False
         return True
-
-    # ---------------- عملیات اصلی ----------------
-#    def accept(self):
-#        if not self.validate():
-#            return  # فرم باز می‌ماند
-#        try:
-#            data = self.get_data()
-#            lines_data = self.table_model.lines_data
-#
-#            if self.invoice:
-#                # بروزرسانی فاکتور
-#                self.invoice_service.update_invoice(self.invoice.id, data, lines_data)
-#            else:
-#                # ایجاد فاکتور جدید
-#                self.invoice_service.create_invoice(data, lines_data)
-#
-#            super().accept()  # ✅ فرم بسته می‌شود فقط اگر عملیات موفق باشد
-#        except ValueError as ve:
-#            # خطاهای مشخص مثل موجودی کافی نیست
-#            QMessageBox.warning(self, "خطا در موجودی", str(ve), QMessageBox.Ok)
-#        except Exception as e:
-#            QMessageBox.critical(self, "خطا در ذخیره فاکتور", str(e), QMessageBox.Ok)
 
     def accept(self):
         if not self.validate():
